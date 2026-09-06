@@ -2,9 +2,6 @@ import os
 import unittest
 from unittest.mock import patch
 
-# Debe fijarse ANTES de importar `app`: usa un archivo sqlite propio para
-# pruebas, distinto del que usa el backend en desarrollo, para no leer ni
-# borrar datos reales al correr los tests.
 os.environ.setdefault("COOKHUB_DATABASE_URL", "sqlite:///test_cookhub.db")
 
 from app import app
