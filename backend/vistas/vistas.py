@@ -2,34 +2,42 @@ from flask import request
 from flask_restful import Resource
 from data.mock_data import recetas, ingredientes, reporte_ingredientes
 
+from modelos import (
+    db,
+    Receta,
+    RecetaSchema
+)
+recetas_schema = RecetaSchema()
+
 class VistaRecetas(Resource):
     def get(self):
         recetas_con_ingrediente = []
-        for receta in recetas:
-            ingrediente = next((i for i in ingredientes if i["id"] == receta["ingrediente_id"]), None)
-            receta_completa = receta.copy()
+        for receta in Receta.query.all():
+            ingrediente = next((i for i in ingredientes if i["id"] == receta.ingrediente_id), None)
+            receta_completa = recetas_schema.dump(receta)
             receta_completa["ingrediente"] = ingrediente
             recetas_con_ingrediente.append(receta_completa)
         return recetas_con_ingrediente
 
     def post(self):
         try:
-            nueva_receta = {
-                "id": max([r["id"] for r in recetas]) + 1 if recetas else 1,
-                "nombre": request.json["nombre"],
-                "descripcion": request.json["descripcion"],
-                "tiempo_preparacion": int(request.json["tiempo_preparacion"]),
-                "dificultad": request.json["dificultad"],
-                "porciones": int(request.json["porciones"]),
-                "ingrediente_id": int(request.json["ingrediente_id"])
-            }
+            nueva_receta = Receta(
+                nombre=request.json["nombre"],
+                descripcion=request.json["descripcion"],
+                tiempo_preparacion=int(request.json["tiempo_preparacion"]),
+                dificultad=request.json["dificultad"],
+                porciones=int(request.json["porciones"]),
+                ingrediente_id=int(request.json["ingrediente_id"])
+            )
             
             # Validar que el ingrediente existe
-            if not any(i["id"] == nueva_receta["ingrediente_id"] for i in ingredientes):
+            if not any(i["id"] == nueva_receta.ingrediente_id for i in ingredientes):
                 return {"mensaje": "El ingrediente seleccionado no existe"}, 400
-            
-            recetas.append(nueva_receta)
-            return {"mensaje": "Receta creada exitosamente", "receta": nueva_receta}, 201
+
+            db.session.add(nueva_receta)
+            db.session.commit()
+
+            return {"mensaje": "Receta creada exitosamente", "receta": recetas_schema.dump(nueva_receta)}, 201
         except (KeyError, ValueError) as e:
             return {"mensaje": "Datos inválidos para crear la receta"}, 400
 
