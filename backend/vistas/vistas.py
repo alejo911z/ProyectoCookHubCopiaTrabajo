@@ -1,147 +1,120 @@
 from flask import request
 from flask_restful import Resource
-from data.mock_data import recetas, ingredientes, reporte_ingredientes
 
-from modelos import (
-    db,
-    Receta,
-    RecetaSchema
-)
+from modelos import RecetaSchema
+from logica import Coleccion
+
 recetas_schema = RecetaSchema()
+coleccion = Coleccion()
+
 
 class VistaRecetas(Resource):
     def get(self):
-        recetas_con_ingrediente = []
-        for receta in Receta.query.all():
-            ingrediente = next((i for i in ingredientes if i["id"] == receta.ingrediente_id), None)
-            receta_completa = recetas_schema.dump(receta)
-            receta_completa["ingrediente"] = ingrediente
-            recetas_con_ingrediente.append(receta_completa)
-        return recetas_con_ingrediente
+        return coleccion.darReceta()
 
     def post(self):
         try:
-            nueva_receta = Receta(
-                nombre=request.json["nombre"],
-                descripcion=request.json["descripcion"],
-                tiempo_preparacion=int(request.json["tiempo_preparacion"]),
-                dificultad=request.json["dificultad"],
-                porciones=int(request.json["porciones"]),
-                ingrediente_id=int(request.json["ingrediente_id"])
-            )
-            
-            # Validar que el ingrediente existe
-            if not any(i["id"] == nueva_receta.ingrediente_id for i in ingredientes):
-                return {"mensaje": "El ingrediente seleccionado no existe"}, 400
-
-            db.session.add(nueva_receta)
-            db.session.commit()
-
-            return {"mensaje": "Receta creada exitosamente", "receta": recetas_schema.dump(nueva_receta)}, 201
-        except (KeyError, ValueError) as e:
+            nombre = request.json["nombre"]
+            descripcion = request.json["descripcion"]
+            tiempo_preparacion = int(request.json["tiempo_preparacion"])
+            dificultad = request.json["dificultad"]
+            porciones = int(request.json["porciones"])
+            ingrediente_id = int(request.json["ingrediente_id"])
+        except (KeyError, ValueError):
             return {"mensaje": "Datos inválidos para crear la receta"}, 400
+
+        nueva_receta = coleccion.agregarReceta(
+            nombre, descripcion, tiempo_preparacion, dificultad, porciones, ingrediente_id
+        )
+        if nueva_receta is None:
+            return {"mensaje": "El ingrediente seleccionado no existe"}, 400
+
+        return {"mensaje": "Receta creada exitosamente", "receta": recetas_schema.dump(nueva_receta)}, 201
+
 
 class VistaReceta(Resource):
     def get(self, id_receta):
-        receta = next((r for r in recetas if r["id"] == id_receta), None)
+        receta = coleccion.darRecetaPorId(id_receta)
         if not receta:
             return {"mensaje": "Receta no encontrada"}, 404
-        
-        ingrediente = next((i for i in ingredientes if i["id"] == receta["ingrediente_id"]), None)
-        receta_completa = receta.copy()
-        receta_completa["ingrediente"] = ingrediente
-        return receta_completa
+        return receta
 
     def put(self, id_receta):
         try:
-            receta = next((r for r in recetas if r["id"] == id_receta), None)
-            if not receta:
-                return {"mensaje": "Receta no encontrada"}, 404
-            
-            # Validar que el ingrediente existe
-            if not any(i["id"] == int(request.json["ingrediente_id"]) for i in ingredientes):
-                return {"mensaje": "El ingrediente seleccionado no existe"}, 400
-            
-            receta["nombre"] = request.json["nombre"]
-            receta["descripcion"] = request.json["descripcion"]
-            receta["tiempo_preparacion"] = int(request.json["tiempo_preparacion"])
-            receta["dificultad"] = request.json["dificultad"]
-            receta["porciones"] = int(request.json["porciones"])
-            receta["ingrediente_id"] = int(request.json["ingrediente_id"])
-            
-            return {"mensaje": "Receta actualizada exitosamente", "receta": receta}
-        except (KeyError, ValueError) as e:
+            nombre = request.json["nombre"]
+            descripcion = request.json["descripcion"]
+            tiempo_preparacion = int(request.json["tiempo_preparacion"])
+            dificultad = request.json["dificultad"]
+            porciones = int(request.json["porciones"])
+            ingrediente_id = int(request.json["ingrediente_id"])
+        except (KeyError, ValueError):
             return {"mensaje": "Datos inválidos para actualizar la receta"}, 400
 
-    def delete(self, id_receta):
-        global recetas
-        receta = next((r for r in recetas if r["id"] == id_receta), None)
-        if not receta:
+        receta = coleccion.editarReceta(
+            id_receta, nombre, descripcion, tiempo_preparacion, dificultad, porciones, ingrediente_id
+        )
+        if receta is None:
             return {"mensaje": "Receta no encontrada"}, 404
-        
-        recetas = [r for r in recetas if r["id"] != id_receta]
+        if receta is False:
+            return {"mensaje": "El ingrediente seleccionado no existe"}, 400
+
+        return {"mensaje": "Receta actualizada exitosamente", "receta": receta}
+
+    def delete(self, id_receta):
+        eliminado = coleccion.eliminarReceta(id_receta)
+        if not eliminado:
+            return {"mensaje": "Receta no encontrada"}, 404
         return {"mensaje": "Receta eliminada exitosamente"}
+
 
 class VistaIngredientes(Resource):
     def get(self):
-        ingredientes_con_conteo = []
-        for ingrediente in ingredientes:
-            conteo_recetas = len([r for r in recetas if r["ingrediente_id"] == ingrediente["id"]])
-            ingrediente_completo = ingrediente.copy()
-            ingrediente_completo["cantidad_recetas"] = conteo_recetas
-            ingredientes_con_conteo.append(ingrediente_completo)
-        return ingredientes_con_conteo
+        return coleccion.darIngrediente()
 
     def post(self):
         try:
-            nuevo_ingrediente = {
-                "id": max([i["id"] for i in ingredientes]) + 1 if ingredientes else 1,
-                "nombre": request.json["nombre"],
-                "tipo": request.json["tipo"],
-                "unidad_medida": request.json["unidad_medida"],
-                "disponible": bool(request.json.get("disponible", True))
-            }
-            ingredientes.append(nuevo_ingrediente)
-            return {"mensaje": "Ingrediente creado exitosamente", "ingrediente": nuevo_ingrediente}, 201
-        except (KeyError, ValueError) as e:
+            nombre = request.json["nombre"]
+            tipo = request.json["tipo"]
+            unidad_medida = request.json["unidad_medida"]
+            disponible = bool(request.json.get("disponible", True))
+        except (KeyError, ValueError):
             return {"mensaje": "Datos inválidos para crear el ingrediente"}, 400
+
+        nuevo_ingrediente = coleccion.agregarIngrediente(nombre, tipo, unidad_medida, disponible)
+        return {"mensaje": "Ingrediente creado exitosamente", "ingrediente": nuevo_ingrediente}, 201
+
 
 class VistaIngrediente(Resource):
     def get(self, id_ingrediente):
-        ingrediente = next((i for i in ingredientes if i["id"] == id_ingrediente), None)
+        ingrediente = coleccion.darIngredientePorId(id_ingrediente)
         if not ingrediente:
             return {"mensaje": "Ingrediente no encontrado"}, 404
         return ingrediente
 
     def put(self, id_ingrediente):
         try:
-            ingrediente = next((i for i in ingredientes if i["id"] == id_ingrediente), None)
-            if not ingrediente:
-                return {"mensaje": "Ingrediente no encontrado"}, 404
-            
-            ingrediente["nombre"] = request.json["nombre"]
-            ingrediente["tipo"] = request.json["tipo"]
-            ingrediente["unidad_medida"] = request.json["unidad_medida"]
-            ingrediente["disponible"] = bool(request.json.get("disponible", True))
-            
-            return {"mensaje": "Ingrediente actualizado exitosamente", "ingrediente": ingrediente}
-        except (KeyError, ValueError) as e:
+            nombre = request.json["nombre"]
+            tipo = request.json["tipo"]
+            unidad_medida = request.json["unidad_medida"]
+            disponible = bool(request.json.get("disponible", True))
+        except (KeyError, ValueError):
             return {"mensaje": "Datos inválidos para actualizar el ingrediente"}, 400
 
-    def delete(self, id_ingrediente):
-        global ingredientes
-        ingrediente = next((i for i in ingredientes if i["id"] == id_ingrediente), None)
+        ingrediente = coleccion.editarIngrediente(id_ingrediente, nombre, tipo, unidad_medida, disponible)
         if not ingrediente:
             return {"mensaje": "Ingrediente no encontrado"}, 404
-        
-        # Verificar que no tenga recetas asociadas
-        recetas_asociadas = [r for r in recetas if r["ingrediente_id"] == id_ingrediente]
-        if recetas_asociadas:
+
+        return {"mensaje": "Ingrediente actualizado exitosamente", "ingrediente": ingrediente}
+
+    def delete(self, id_ingrediente):
+        resultado = coleccion.eliminarIngrediente(id_ingrediente)
+        if resultado is None:
+            return {"mensaje": "Ingrediente no encontrado"}, 404
+        if resultado is False:
             return {"mensaje": "No se puede eliminar el ingrediente porque tiene recetas asociadas"}, 400
-        
-        ingredientes = [i for i in ingredientes if i["id"] != id_ingrediente]
         return {"mensaje": "Ingrediente eliminado exitosamente"}
+
 
 class VistaReporteIngredientes(Resource):
     def get(self):
-        return reporte_ingredientes
+        return coleccion.darReporteIngredientes()
