@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask
 from flask_restful import Api
 from flask_cors import CORS
@@ -12,7 +14,9 @@ from vistas import (
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "cookhub-secret-key"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///cookhub.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "COOKHUB_DATABASE_URL", "sqlite:///cookhub.db"
+)
 CORS(app)
 
 db.init_app(app)
